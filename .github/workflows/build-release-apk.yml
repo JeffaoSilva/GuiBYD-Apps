@@ -1,0 +1,61 @@
+name: Build Release APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Check signing secrets
+        env:
+          KS: ${{ secrets.GUIBYD_KEYSTORE_B64 }}
+          KSP: ${{ secrets.GUIBYD_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.GUIBYD_KEY_ALIAS }}
+          KP: ${{ secrets.GUIBYD_KEY_PASSWORD }}
+        run: |
+          test -n "$KS" || (echo "Missing GUIBYD_KEYSTORE_B64" && exit 1)
+          test -n "$KSP" || (echo "Missing GUIBYD_KEYSTORE_PASSWORD" && exit 1)
+          test -n "$KA" || (echo "Missing GUIBYD_KEY_ALIAS" && exit 1)
+          test -n "$KP" || (echo "Missing GUIBYD_KEY_PASSWORD" && exit 1)
+
+      - name: Restore release keystore
+        env:
+          KS: ${{ secrets.GUIBYD_KEYSTORE_B64 }}
+        run: |
+          echo "$KS" | base64 --decode > "$RUNNER_TEMP/guibyd-release.jks"
+
+      - name: Build signed release APK
+        env:
+          GUIBYD_KEYSTORE_PATH: ${{ runner.temp }}/guibyd-release.jks
+          GUIBYD_KEYSTORE_PASSWORD: ${{ secrets.GUIBYD_KEYSTORE_PASSWORD }}
+          GUIBYD_KEY_ALIAS: ${{ secrets.GUIBYD_KEY_ALIAS }}
+          GUIBYD_KEY_PASSWORD: ${{ secrets.GUIBYD_KEY_PASSWORD }}
+        run: gradle assembleRelease
+
+      - name: Rename APK
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Aplicativos-GuiBYD-v2.0.apk
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aplicativos-GuiBYD-v2.0-release
+          path: Aplicativos-GuiBYD-v2.0.apk
