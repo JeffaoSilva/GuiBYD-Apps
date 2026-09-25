@@ -1,22 +1,32 @@
-# Aplicativos Gui.BYD
+# Aplicativos Gui.BYD V2
 
-Launcher simples em paisagem para multimídias BYD desbloqueadas.
+## Interface
+Tudo em uma única tela, em 3 colunas:
 
-## Fluxo
-1. Abrir Aplicativos Gui.BYD.
-2. Tocar em um app.
-3. O Android envia o link da ficha da Google Play diretamente ao pacote `com.aurora.store`.
-4. O Aurora deve abrir a ficha correspondente.
-5. Instalar no Aurora e voltar ao Gui.BYD.
-6. Repetir para o próximo app.
+1. Aplicativos do pendrive
+2. Aplicativos do Aurora
+3. Atualização do YouTube
 
-## Sem fallback
-Se o Aurora não existir, o app mostra:
-> Aurora Store necessário
+A orientação não é travada. O Android pode alternar entre retrato e paisagem.
 
-Ele NÃO abre Play Store e NÃO abre navegador.
+## Aplicativos do pendrive
 
-## Apps
+O aplicativo procura a pasta `GuiBYD` na raiz da mídia removível.
+
+Busca por prefixo, sem exigir `_` após o nome:
+
+- YouTube -> `Youtube_Morphe*.apk`
+- MicroG -> `MicroG_RE*.apk`
+- Electro -> `Electro*.apk`
+- Radarbot -> `Radarbot*.apk`
+- Spark -> `Spark*.apk`
+- Aurora Store -> `Aurora_Store*.apk`
+
+Se houver mais de um arquivo compatível, o app compara os números presentes no nome
+e tenta usar a versão mais alta.
+
+## Aplicativos do Aurora
+
 - Chrome
 - Disney Plus
 - HBO Max
@@ -27,15 +37,32 @@ Ele NÃO abre Play Store e NÃO abre navegador.
 - WhatsApp
 - WhatsApp Business
 
-## Teste principal
-Validar no Aurora Store 4.8.4:
-- se o primeiro clique abre diretamente a ficha correta;
-- se, com o Aurora já aberto, um segundo clique troca corretamente para a nova ficha.
+Cada botão abre a ficha correspondente no Aurora Store.
 
-## Gerar APK com GitHub Actions
-Suba o conteúdo desta pasta para um repositório GitHub.
-A ação `.github/workflows/build-apk.yml` gera automaticamente:
-`app-debug.apk`
+## Atualização online do YouTube
 
-O APK fica disponível em:
-Actions > execução Build APK > Artifacts > GuiBYD-Apps-debug
+O botão `Atualizar YouTube` baixa:
+
+https://github.com/JeffaoSilva/GuiBYD-Apps/releases/latest/download/Youtube_Morphe.apk
+
+Na release mais recente do GitHub, o asset deve se chamar exatamente:
+
+`Youtube_Morphe.apk`
+
+Após o download, o app abre o instalador do Android.
+
+## Assinatura de produção
+
+O workflow de release espera estes GitHub Secrets:
+
+- `GUIBYD_KEYSTORE_B64`
+- `GUIBYD_KEYSTORE_PASSWORD`
+- `GUIBYD_KEY_ALIAS`
+- `GUIBYD_KEY_PASSWORD`
+
+A chave privada NÃO deve ser enviada para o repositório público.
+
+## Versão
+- package: `com.guibyd.apps`
+- versionCode: 2
+- versionName: 2.0

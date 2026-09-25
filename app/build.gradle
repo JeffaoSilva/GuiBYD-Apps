@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+def releaseStorePath = System.getenv("GUIBYD_KEYSTORE_PATH")
+def releaseStorePassword = System.getenv("GUIBYD_KEYSTORE_PASSWORD")
+def releaseKeyAlias = System.getenv("GUIBYD_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("GUIBYD_KEY_PASSWORD")
+
 android {
     namespace 'com.guibyd.apps'
     compileSdk 35
@@ -10,8 +15,34 @@ android {
         applicationId "com.guibyd.apps"
         minSdk 23
         targetSdk 28
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "2.0"
+    }
+
+    signingConfigs {
+        if (releaseStorePath) {
+            release {
+                storeFile file(releaseStorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+
+        release {
+            minifyEnabled false
+            shrinkResources false
+            if (releaseStorePath) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 }
 
