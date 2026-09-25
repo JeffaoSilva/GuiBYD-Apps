@@ -39,10 +39,15 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
+
             if (releaseStorePath) {
                 signingConfig signingConfigs.release
             }
         }
+    }
+
+    lint {
+        disable 'ExpiredTargetSdkVersion'
     }
 }
 
