@@ -1,32 +1,30 @@
-# Aplicativos Gui.BYD V2
+# Aplicativos Gui.BYD v3.0
+
+Versão cliente para multimídias BYD desbloqueadas.
+
+## Novidades da V3
+- Ativação por licença numérica de 6 dígitos.
+- Vínculo da licença à primeira instalação/multimídia.
+- Identidade local com UUID aleatório + chave pública no Android Keystore.
+- Validação da licença via Supabase.
+- Tolerância offline de até 30 dias após uma validação válida.
+- Métricas anônimas de uso dos botões.
+- YouTube Morphe servido pelo Supabase Storage.
+- Exibição da versão disponível do YouTube.
+- Autoatualização do próprio Aplicativos Gui.BYD via release `guibyd`.
+- Mantém package `com.guibyd.apps` e versionCode 3 / versionName 3.0.
 
 ## Interface
-Tudo em uma única tela, em 3 colunas:
+### Aplicativos do pendrive
+- MicroG
+- Electro
+- Radarbot
+- Spark
+- Aurora Store
 
-1. Aplicativos do pendrive
-2. Aplicativos do Aurora
-3. Atualização do YouTube
+A pasta esperada continua sendo `USB/GuiBYD/`.
 
-A orientação não é travada. O Android pode alternar entre retrato e paisagem.
-
-## Aplicativos do pendrive
-
-O aplicativo procura a pasta `GuiBYD` na raiz da mídia removível.
-
-Busca por prefixo, sem exigir `_` após o nome:
-
-- YouTube -> `Youtube_Morphe*.apk`
-- MicroG -> `MicroG_RE*.apk`
-- Electro -> `Electro*.apk`
-- Radarbot -> `Radarbot*.apk`
-- Spark -> `Spark*.apk`
-- Aurora Store -> `Aurora_Store*.apk`
-
-Se houver mais de um arquivo compatível, o app compara os números presentes no nome
-e tenta usar a versão mais alta.
-
-## Aplicativos do Aurora
-
+### Aplicativos do Aurora
 - Chrome
 - Disney Plus
 - HBO Max
@@ -37,32 +35,19 @@ e tenta usar a versão mais alta.
 - WhatsApp
 - WhatsApp Business
 
-Cada botão abre a ficha correspondente no Aurora Store.
+### YouTube
+O botão `Instalar / Atualizar o YouTube` consulta a release `youtube` no Supabase e baixa o APK do bucket privado `releases`.
 
-## Atualização online do YouTube
-
-O botão `Atualizar YouTube` baixa:
-
-https://github.com/JeffaoSilva/GuiBYD-Apps/releases/latest/download/Youtube_Morphe.apk
-
-Na release mais recente do GitHub, o asset deve se chamar exatamente:
-
-`Youtube_Morphe.apk`
-
-Após o download, o app abre o instalador do Android.
-
-## Assinatura de produção
-
-O workflow de release espera estes GitHub Secrets:
-
+## GitHub Secrets necessários
+O workflow de release precisa destes 6 Secrets:
 - `GUIBYD_KEYSTORE_B64`
 - `GUIBYD_KEYSTORE_PASSWORD`
 - `GUIBYD_KEY_ALIAS`
 - `GUIBYD_KEY_PASSWORD`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
 
-A chave privada NÃO deve ser enviada para o repositório público.
+Use os mesmos quatro Secrets de assinatura das versões anteriores para que a V3 atualize por cima da V2.
 
-## Versão
-- package: `com.guibyd.apps`
-- versionCode: 2
-- versionName: 2.0
+## APK gerado
+`Aplicativos-GuiBYD-v3.0.apk`
