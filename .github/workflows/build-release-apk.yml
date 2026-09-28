@@ -24,17 +24,21 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Check signing secrets
+      - name: Check required secrets
         env:
           KS: ${{ secrets.GUIBYD_KEYSTORE_B64 }}
           KSP: ${{ secrets.GUIBYD_KEYSTORE_PASSWORD }}
           KA: ${{ secrets.GUIBYD_KEY_ALIAS }}
           KP: ${{ secrets.GUIBYD_KEY_PASSWORD }}
+          SB_URL: ${{ secrets.SUPABASE_URL }}
+          SB_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           test -n "$KS" || (echo "Missing GUIBYD_KEYSTORE_B64" && exit 1)
           test -n "$KSP" || (echo "Missing GUIBYD_KEYSTORE_PASSWORD" && exit 1)
           test -n "$KA" || (echo "Missing GUIBYD_KEY_ALIAS" && exit 1)
           test -n "$KP" || (echo "Missing GUIBYD_KEY_PASSWORD" && exit 1)
+          test -n "$SB_URL" || (echo "Missing SUPABASE_URL" && exit 1)
+          test -n "$SB_KEY" || (echo "Missing SUPABASE_ANON_KEY" && exit 1)
 
       - name: Restore release keystore
         env:
@@ -48,14 +52,16 @@ jobs:
           GUIBYD_KEYSTORE_PASSWORD: ${{ secrets.GUIBYD_KEYSTORE_PASSWORD }}
           GUIBYD_KEY_ALIAS: ${{ secrets.GUIBYD_KEY_ALIAS }}
           GUIBYD_KEY_PASSWORD: ${{ secrets.GUIBYD_KEY_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: gradle assembleRelease
 
       - name: Rename APK
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Aplicativos-GuiBYD-v2.0.apk
+          cp app/build/outputs/apk/release/app-release.apk Aplicativos-GuiBYD-v3.0.apk
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: Aplicativos-GuiBYD-v2.0-release
-          path: Aplicativos-GuiBYD-v2.0.apk
+          name: Aplicativos-GuiBYD-v3.0-release
+          path: Aplicativos-GuiBYD-v3.0.apk
