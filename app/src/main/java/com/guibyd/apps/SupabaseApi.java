@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 public final class SupabaseApi {
@@ -87,14 +88,22 @@ public final class SupabaseApi {
         rpc("record_usage_event", body);
     }
 
+    private static final String RELEASES_API_BASE =
+            "https://guibyd-releases-api.jeffersondasilva02.workers.dev";
+
     public String storageDownloadUrl(String filePath) {
-        String clean = filePath == null ? "" : filePath.replace(" ", "%20");
-        return baseUrl + "/storage/v1/object/authenticated/releases/" + clean;
+        try {
+            String clean = filePath == null ? "" : filePath.trim();
+            return RELEASES_API_BASE + "/download?key="
+                    + URLEncoder.encode(clean, "UTF-8");
+        } catch (Exception e) {
+            throw new IllegalStateException("Caminho do arquivo inválido", e);
+        }
     }
 
     public void addAuthHeaders(DownloadHeaderTarget target) {
-        target.add("apikey", apiKey);
-        target.add("Authorization", "Bearer " + apiKey);
+        // O download dos APKs agora é servido pelo Cloudflare Worker/R2.
+        // Não enviamos a chave do Supabase para esse endpoint.
     }
 
     private String rpc(String function, JSONObject body) throws Exception {

@@ -1,3 +1,7 @@
+# Aplicativos Gui.BYD V3.1
+
+Correção: downloads de YouTube e do próprio app agora saem do Cloudflare Worker/R2.
+
 # Aplicativos Gui.BYD v3.0
 
 Versão cliente para multimídias BYD desbloqueadas.
