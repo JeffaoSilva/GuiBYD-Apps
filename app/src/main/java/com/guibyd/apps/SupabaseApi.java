@@ -101,6 +101,10 @@ public final class SupabaseApi {
         }
     }
 
+    public String bannerUrl() {
+        return RELEASES_API_BASE + "/banner?t=" + System.currentTimeMillis();
+    }
+
     public void addAuthHeaders(DownloadHeaderTarget target) {
         // O download dos APKs agora é servido pelo Cloudflare Worker/R2.
         // Não enviamos a chave do Supabase para esse endpoint.

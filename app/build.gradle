@@ -18,8 +18,8 @@ android {
         applicationId "com.guibyd.apps"
         minSdk 23
         targetSdk 28
-        versionCode 4
-        versionName "3.1"
+        versionCode 6
+        versionName "3.3"
         buildConfigField "String", "SUPABASE_URL", quoted(supabaseUrl)
         buildConfigField "String", "SUPABASE_KEY", quoted(supabaseKey)
     }

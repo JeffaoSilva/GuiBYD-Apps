@@ -13,12 +13,16 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -37,7 +41,10 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -62,10 +69,18 @@ public class MainActivity extends Activity {
     private String installationId;
     private String publicKey;
     private JSONObject youtubeRelease;
+    private JSONObject appRelease;
     private TextView youtubeVersionView;
+    private TextView appVersionView;
+    private ProgressBar youtubeDownloadProgress;
+    private ProgressBar appDownloadProgress;
+    private TextView youtubeProgressText;
+    private TextView appProgressText;
+    private ImageView bannerView;
     private boolean selfUpdatePromptShown = false;
 
     private final Map<Long, DownloadTarget> downloads = new HashMap<>();
+    private final Handler downloadProgressHandler = new Handler(Looper.getMainLooper());
 
     private static final AppItem[] USB_APPS = new AppItem[] {
             new AppItem("MicroG", "MicroG_RE", R.drawable.icon_microg, AppType.USB, "usb_microg"),
@@ -112,6 +127,16 @@ public class MainActivity extends Activity {
         }
 
         startLicenseFlow();
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+        if (bannerView != null) {
+            selfUpdatePromptShown = false;
+            refreshOnlineInfo();
+            loadBanner();
+        }
     }
 
     @Override
@@ -308,6 +333,7 @@ public class MainActivity extends Activity {
 
     private void openMainApp() {
         render();
+        loadBanner();
         refreshOnlineInfo();
     }
 
@@ -327,18 +353,50 @@ public class MainActivity extends Activity {
         title.setPadding(0, 0, 0, dp(18));
         root.addView(title, matchWrap());
 
+        bannerView = new ImageView(this);
+        bannerView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        bannerView.setAdjustViewBounds(false);
+        bannerView.setBackgroundResource(R.drawable.update_tile);
+        bannerView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(portrait ? 120 : 130)
+        );
+        bannerLp.setMargins(dp(5), 0, dp(5), dp(12));
+        root.addView(bannerView, bannerLp);
+
         addSectionTitle(root, "Aplicativos do pendrive");
         addGrid(root, USB_APPS, portrait);
 
         addSectionTitle(root, "Aplicativos do Aurora");
         addGrid(root, AURORA_APPS, portrait);
 
-        addSectionTitle(root, "YouTube");
+        addSectionTitle(root, "Atualizações");
+
+        LinearLayout updatesRow = new LinearLayout(this);
+        updatesRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        LinearLayout.LayoutParams appLp = new LinearLayout.LayoutParams(
+                0,
+                dp(portrait ? 175 : 165),
+                1f
+        );
+        appLp.setMargins(dp(5), 0, dp(5), 0);
+        updatesRow.addView(makeOnlineUpdateCard(DOWNLOAD_GUIBYD, portrait), appLp);
+
+        LinearLayout.LayoutParams youtubeLp = new LinearLayout.LayoutParams(
+                0,
+                dp(portrait ? 175 : 165),
+                1f
+        );
+        youtubeLp.setMargins(dp(5), 0, dp(5), 0);
+        updatesRow.addView(makeOnlineUpdateCard(DOWNLOAD_YOUTUBE, portrait), youtubeLp);
+
         root.addView(
-                makeYoutubeCard(portrait),
+                updatesRow,
                 new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(portrait ? 125 : 135)
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                 )
         );
 
@@ -422,44 +480,89 @@ public class MainActivity extends Activity {
         return card;
     }
 
-    private View makeYoutubeCard(boolean portrait) {
+    private View makeOnlineUpdateCard(int kind, boolean portrait) {
+        final boolean isYoutube = kind == DOWNLOAD_YOUTUBE;
+
         LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(16), dp(10), dp(16), dp(10));
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(12), dp(10), dp(12), dp(10));
         card.setBackgroundResource(R.drawable.update_tile);
         card.setClickable(true);
         card.setFocusable(true);
 
         ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.icon_youtube);
+        icon.setImageResource(isYoutube ? R.drawable.icon_youtube : R.drawable.icon_update);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int s = dp(portrait ? 54 : 62);
-        card.addView(icon, new LinearLayout.LayoutParams(s, s));
+        int iconSize = dp(portrait ? 40 : 44);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        iconLp.setMargins(0, 0, 0, dp(6));
+        card.addView(icon, iconLp);
 
-        LinearLayout texts = new LinearLayout(this);
-        texts.setOrientation(LinearLayout.VERTICAL);
-        texts.setPadding(dp(14), 0, 0, 0);
+        TextView title = makeText(
+                isYoutube ? "Instalar / Atualizar YouTube" : "Atualizar Aplicativos Gui.BYD",
+                portrait ? 14 : 15,
+                Color.WHITE
+        );
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        title.setMaxLines(2);
+        card.addView(title, matchWrap());
 
-        TextView t1 = makeText("Instalar / Atualizar o YouTube", portrait ? 17 : 19, Color.WHITE);
-        t1.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        TextView t2 = makeText(
-                "Baixa a versão mais recente e instala ou atualiza o YouTube",
-                portrait ? 12 : 13,
+        TextView version = makeText(
+                "Consultando versão…",
+                portrait ? 11 : 12,
+                Color.rgb(151, 168, 184)
+        );
+        version.setGravity(Gravity.CENTER);
+        version.setPadding(0, dp(4), 0, dp(4));
+        card.addView(version, matchWrap());
+
+        ProgressBar progress = new ProgressBar(
+                this,
+                null,
+                android.R.attr.progressBarStyleHorizontal
+        );
+        progress.setMax(100);
+        progress.setProgress(0);
+        progress.setVisibility(View.GONE);
+        LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(8)
+        );
+        progressLp.setMargins(0, dp(4), 0, 0);
+        card.addView(progress, progressLp);
+
+        TextView progressText = makeText(
+                "",
+                portrait ? 10 : 11,
                 Color.rgb(183, 210, 201)
         );
-        youtubeVersionView = makeText("Consultando versão…", portrait ? 12 : 13, Color.rgb(151, 168, 184));
-        youtubeVersionView.setPadding(0, dp(4), 0, 0);
+        progressText.setGravity(Gravity.CENTER);
+        progressText.setPadding(0, dp(3), 0, 0);
+        progressText.setVisibility(View.GONE);
+        card.addView(progressText, matchWrap());
 
-        texts.addView(t1, matchWrap());
-        texts.addView(t2, matchWrap());
-        texts.addView(youtubeVersionView, matchWrap());
+        if (isYoutube) {
+            youtubeVersionView = version;
+            youtubeDownloadProgress = progress;
+            youtubeProgressText = progressText;
+        } else {
+            appVersionView = version;
+            appDownloadProgress = progress;
+            appProgressText = progressText;
+        }
 
-        card.addView(texts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         card.setOnClickListener(v -> {
-            recordUsage("youtube_install_update");
-            startYoutubeUpdate();
+            if (isYoutube) {
+                recordUsage("youtube_install_update");
+                startYoutubeUpdate();
+            } else {
+                recordUsage("guibyd_self_update");
+                startSelfUpdate();
+            }
         });
+
         return card;
     }
 
@@ -467,46 +570,67 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             try {
                 youtubeRelease = api.getRelease("youtube");
-                JSONObject appRelease = api.getRelease("guibyd");
+                appRelease = api.getRelease("guibyd");
 
                 runOnUiThread(() -> {
-                    if (youtubeVersionView != null) {
-                        if (youtubeRelease != null) {
-                            String version = youtubeRelease.optString("version_name", "").trim();
-                            youtubeVersionView.setText(version.isEmpty() || "não definido".equalsIgnoreCase(version)
-                                    ? "Versão ainda não publicada"
-                                    : "Versão disponível: " + version);
-                        } else {
-                            youtubeVersionView.setText("Versão indisponível");
-                        }
-                    }
+                    updateReleaseLabels();
                     checkSelfUpdate(appRelease);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     if (youtubeVersionView != null) youtubeVersionView.setText("Sem conexão para consultar a versão");
+                    if (appVersionView != null) appVersionView.setText("Sem conexão para consultar a versão");
                 });
             }
         }).start();
     }
 
+    private void updateReleaseLabels() {
+        if (youtubeVersionView != null) {
+            if (youtubeRelease != null) {
+                String version = youtubeRelease.optString("version_name", "").trim();
+                youtubeVersionView.setText(
+                        version.isEmpty() || "não definido".equalsIgnoreCase(version)
+                                ? "Versão ainda não publicada"
+                                : "Versão disponível: " + version
+                );
+            } else {
+                youtubeVersionView.setText("Versão indisponível");
+            }
+        }
+
+        if (appVersionView != null) {
+            if (appRelease != null) {
+                String version = appRelease.optString("version_name", "").trim();
+
+                if (version.isEmpty()) {
+                    appVersionView.setText("Versão indisponível");
+                } else if (isVersionNewer(version, BuildConfig.VERSION_NAME)) {
+                    appVersionView.setText("Versão disponível: " + version);
+                } else {
+                    appVersionView.setText("Você já está na versão mais recente");
+                }
+            } else {
+                appVersionView.setText("Versão indisponível");
+            }
+        }
+    }
+
     private void checkSelfUpdate(JSONObject release) {
         if (release == null || selfUpdatePromptShown) return;
-        long available = release.optLong("version_code", 0);
-        if (available <= BuildConfig.VERSION_CODE) return;
 
-        String version = release.optString("version_name", "nova versão");
-        boolean required = release.optBoolean("is_required", false);
+        String version = release.optString("version_name", "").trim();
+        if (version.isEmpty() || !isVersionNewer(version, BuildConfig.VERSION_NAME)) return;
+
         selfUpdatePromptShown = true;
 
-        AlertDialog.Builder b = new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
                 .setTitle("Atualização do Aplicativos Gui.BYD")
-                .setMessage("Versão " + version + " disponível.")
-                .setPositiveButton("Atualizar", (d, w) -> startReleaseDownload(release, DOWNLOAD_GUIBYD));
-
-        if (!required) b.setNegativeButton("Depois", null);
-        b.setCancelable(!required);
-        b.show();
+                .setMessage("Versão " + version + " disponível. Atualize para usar a versão mais recente.")
+                .setPositiveButton("Atualizar", (d, w) -> startReleaseDownload(release, DOWNLOAD_GUIBYD))
+                .setNegativeButton("Depois", null)
+                .setCancelable(true)
+                .show();
     }
 
     private void startYoutubeUpdate() {
@@ -536,7 +660,142 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private void startSelfUpdate() {
+        if (appRelease != null) {
+            String version = appRelease.optString("version_name", "").trim();
+
+            if (version.isEmpty()) {
+                showMessage(
+                        "Aplicativos Gui.BYD",
+                        "Ainda não há uma versão válida publicada no servidor."
+                );
+                return;
+            }
+
+            if (!isVersionNewer(version, BuildConfig.VERSION_NAME)) {
+                showMessage(
+                        "Aplicativos Gui.BYD",
+                        "Você já está usando a versão mais recente."
+                );
+                return;
+            }
+
+            startReleaseDownload(appRelease, DOWNLOAD_GUIBYD);
+            return;
+        }
+
+        Toast.makeText(this, "Consultando atualização do Aplicativos Gui.BYD…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                JSONObject r = api.getRelease("guibyd");
+                appRelease = r;
+                runOnUiThread(() -> {
+                    updateReleaseLabels();
+                    if (r == null || r.optString("file_path", "").isEmpty()) {
+                        showMessage(
+                                "Aplicativos Gui.BYD",
+                                "Ainda não há uma atualização publicada no servidor."
+                        );
+                        return;
+                    }
+
+                    String version = r.optString("version_name", "").trim();
+                    if (version.isEmpty()) {
+                        showMessage(
+                                "Aplicativos Gui.BYD",
+                                "A atualização publicada não possui uma versão válida."
+                        );
+                    } else if (!isVersionNewer(version, BuildConfig.VERSION_NAME)) {
+                        showMessage(
+                                "Aplicativos Gui.BYD",
+                                "Você já está usando a versão mais recente."
+                        );
+                    } else {
+                        startReleaseDownload(r, DOWNLOAD_GUIBYD);
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> showMessage(
+                        "Falha na conexão",
+                        "Não foi possível consultar a atualização do Aplicativos Gui.BYD."
+                ));
+            }
+        }).start();
+    }
+
+    private void loadBanner() {
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(api.bannerUrl());
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(12000);
+                connection.setReadTimeout(18000);
+                connection.setUseCaches(false);
+
+                if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                    return;
+                }
+
+                try (InputStream in = connection.getInputStream()) {
+                    Bitmap bitmap = BitmapFactory.decodeStream(in);
+                    if (bitmap != null) {
+                        runOnUiThread(() -> {
+                            if (bannerView != null) {
+                                bannerView.setImageBitmap(bitmap);
+                                bannerView.setVisibility(View.VISIBLE);
+                            }
+                        });
+                    }
+                }
+            } catch (Exception ignored) {
+                // Sem banner ou sem conexão: a tela continua funcionando normalmente.
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
+    }
+
+    private boolean isVersionNewer(String availableVersion, String currentVersion) {
+        return compareVersions(availableVersion, currentVersion) > 0;
+    }
+
+    private int compareVersions(String a, String b) {
+        int[] av = parseVersion(a);
+        int[] bv = parseVersion(b);
+        int max = Math.max(av.length, bv.length);
+
+        for (int i = 0; i < max; i++) {
+            int ai = i < av.length ? av[i] : 0;
+            int bi = i < bv.length ? bv[i] : 0;
+            if (ai != bi) return ai > bi ? 1 : -1;
+        }
+        return 0;
+    }
+
+    private int[] parseVersion(String version) {
+        String clean = version == null ? "" : version.trim();
+        clean = clean.replaceFirst("^[vV]", "");
+        clean = clean.split("[-+\\s]", 2)[0];
+
+        String[] parts = clean.split("\\.");
+        int[] result = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            try {
+                result[i] = Integer.parseInt(parts[i].replaceAll("[^0-9]", ""));
+            } catch (Exception e) {
+                result[i] = 0;
+            }
+        }
+        return result;
+    }
+
     private void startReleaseDownload(JSONObject release, int kind) {
+        if (isDownloadActive(kind)) {
+            Toast.makeText(this, "Este download já está em andamento.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         if (!ensureInstallPermission()) return;
 
         String path = release.optString("file_path", "").trim();
@@ -567,12 +826,88 @@ public class MainActivity extends Activity {
 
             DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
             long id = dm.enqueue(request);
-            downloads.put(id, new DownloadTarget(kind, targetFile));
-
-            Toast.makeText(this, "Baixando atualização…", Toast.LENGTH_LONG).show();
+            DownloadTarget target = new DownloadTarget(kind, targetFile);
+            downloads.put(id, target);
+            showDownloadProgress(kind, 0, "Iniciando download…");
+            monitorDownloadProgress(id, target);
         } catch (Exception e) {
             showMessage("Falha no download", "Não foi possível iniciar o download. Verifique a internet.");
         }
+    }
+
+    private boolean isDownloadActive(int kind) {
+        for (DownloadTarget target : downloads.values()) {
+            if (target.kind == kind) return true;
+        }
+        return false;
+    }
+
+    private void showDownloadProgress(int kind, int percent, String text) {
+        ProgressBar bar = kind == DOWNLOAD_YOUTUBE
+                ? youtubeDownloadProgress
+                : appDownloadProgress;
+        TextView label = kind == DOWNLOAD_YOUTUBE
+                ? youtubeProgressText
+                : appProgressText;
+
+        if (bar != null) {
+            bar.setVisibility(View.VISIBLE);
+            bar.setIndeterminate(percent < 0);
+            if (percent >= 0) bar.setProgress(Math.max(0, Math.min(100, percent)));
+        }
+
+        if (label != null) {
+            label.setVisibility(View.VISIBLE);
+            label.setText(text);
+        }
+    }
+
+    private void monitorDownloadProgress(long downloadId, DownloadTarget target) {
+        final DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+
+        Runnable poll = new Runnable() {
+            @Override
+            public void run() {
+                if (!downloads.containsKey(downloadId)) return;
+
+                DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
+                Cursor cursor = dm.query(query);
+
+                try {
+                    if (cursor == null || !cursor.moveToFirst()) {
+                        downloadProgressHandler.postDelayed(this, 500);
+                        return;
+                    }
+
+                    int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                    long downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                    long total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+
+                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                        showDownloadProgress(target.kind, 100, "Download concluído · 100%");
+                        return;
+                    }
+
+                    if (status == DownloadManager.STATUS_FAILED) {
+                        showDownloadProgress(target.kind, 0, "Falha no download");
+                        return;
+                    }
+
+                    if (total > 0) {
+                        int percent = (int) Math.min(100L, (downloaded * 100L) / total);
+                        showDownloadProgress(target.kind, percent, "Baixando… " + percent + "%");
+                    } else {
+                        showDownloadProgress(target.kind, -1, "Baixando…");
+                    }
+
+                    downloadProgressHandler.postDelayed(this, 500);
+                } finally {
+                    if (cursor != null) cursor.close();
+                }
+            }
+        };
+
+        downloadProgressHandler.post(poll);
     }
 
     private boolean ensureInstallPermission() {
@@ -609,6 +944,7 @@ public class MainActivity extends Activity {
             int status = cursor.getInt(statusIndex);
 
             if (status == DownloadManager.STATUS_SUCCESSFUL && target.file.exists()) {
+                showDownloadProgress(target.kind, 100, "Download concluído · 100%");
                 try {
                     File cached = copyForInstall(target.file);
                     launchInstaller(cached);
@@ -616,6 +952,7 @@ public class MainActivity extends Activity {
                     showMessage("Download concluído", "O APK foi baixado, mas não consegui abrir o instalador.");
                 }
             } else {
+                showDownloadProgress(target.kind, 0, "Falha no download");
                 showMessage("Falha no download", "Não foi possível baixar o APK.");
             }
         } finally {
