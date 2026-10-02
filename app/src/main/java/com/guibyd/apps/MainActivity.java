@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
+import android.content.ContentValues;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -24,6 +26,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.provider.MediaStore;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.view.Gravity;
@@ -37,20 +40,26 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
 
@@ -77,7 +86,10 @@ public class MainActivity extends Activity {
     private TextView youtubeProgressText;
     private TextView appProgressText;
     private ImageView bannerView;
+    private LinearLayout transfersContainer;
     private boolean selfUpdatePromptShown = false;
+    private boolean mainAppOpen = false;
+    private boolean revalidating = false;
 
     private final Map<Long, DownloadTarget> downloads = new HashMap<>();
     private final Handler downloadProgressHandler = new Handler(Looper.getMainLooper());
@@ -117,6 +129,7 @@ public class MainActivity extends Activity {
         registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
 
         api = new SupabaseApi(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_KEY);
+        cleanupInstallerCache();
 
         try {
             installationId = DeviceIdentity.getOrCreateInstallationId(this);
@@ -132,10 +145,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onRestart() {
         super.onRestart();
-        if (bannerView != null) {
-            selfUpdatePromptShown = false;
-            refreshOnlineInfo();
-            loadBanner();
+        if (mainAppOpen) {
+            revalidateCurrentLicense();
         }
     }
 
@@ -194,6 +205,7 @@ public class MainActivity extends Activity {
     }
 
     private void showActivationScreen(String message) {
+        mainAppOpen = false;
         boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
 
         ScrollView scroll = new ScrollView(this);
@@ -332,9 +344,11 @@ public class MainActivity extends Activity {
     }
 
     private void openMainApp() {
+        mainAppOpen = true;
         render();
         loadBanner();
         refreshOnlineInfo();
+        loadTransfers();
     }
 
     private void render() {
@@ -399,6 +413,29 @@ public class MainActivity extends Activity {
                         LinearLayout.LayoutParams.WRAP_CONTENT
                 )
         );
+
+        addSectionTitle(root, "Transferências");
+
+        TextView refreshTransfers = makeText("Atualizar transferências", portrait ? 14 : 15, Color.WHITE);
+        refreshTransfers.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        refreshTransfers.setGravity(Gravity.CENTER);
+        refreshTransfers.setPadding(dp(12), dp(13), dp(12), dp(13));
+        refreshTransfers.setBackgroundResource(R.drawable.tile);
+        refreshTransfers.setClickable(true);
+        refreshTransfers.setOnClickListener(v -> loadTransfers());
+        LinearLayout.LayoutParams refreshLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        refreshLp.setMargins(dp(5), 0, dp(5), dp(10));
+        root.addView(refreshTransfers, refreshLp);
+
+        transfersContainer = new LinearLayout(this);
+        transfersContainer.setOrientation(LinearLayout.VERTICAL);
+        TextView initialTransfers = makeText("Carregando transferências…", 13, Color.rgb(151, 168, 184));
+        initialTransfers.setPadding(dp(7), dp(4), dp(7), dp(12));
+        transfersContainer.addView(initialTransfers, matchWrap());
+        root.addView(transfersContainer, matchWrap());
 
         scroll.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
@@ -971,6 +1008,423 @@ public class MainActivity extends Activity {
                         BuildConfig.VERSION_NAME
                 );
             } catch (Exception ignored) {}
+        }).start();
+    }
+
+    // ---------------- Transferências ----------------
+
+    private void loadTransfers() {
+        if (transfersContainer == null) return;
+
+        transfersContainer.removeAllViews();
+        TextView loading = makeText("Carregando transferências…", 13, Color.rgb(151, 168, 184));
+        loading.setPadding(dp(7), dp(4), dp(7), dp(12));
+        transfersContainer.addView(loading, matchWrap());
+
+        String licenseCode = prefs().getString(PREF_LICENSE_CODE, "");
+        if (licenseCode == null || licenseCode.trim().isEmpty()) return;
+
+        new Thread(() -> {
+            try {
+                JSONArray rows = api.listTransfers(licenseCode, installationId, publicKey);
+                runOnUiThread(() -> renderTransfers(rows));
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (transfersContainer == null) return;
+                    transfersContainer.removeAllViews();
+                    TextView error = makeText("Não foi possível carregar as transferências.", 13, Color.rgb(255, 169, 169));
+                    error.setPadding(dp(7), dp(4), dp(7), dp(12));
+                    transfersContainer.addView(error, matchWrap());
+                });
+            }
+        }).start();
+    }
+
+    private void renderTransfers(JSONArray rows) {
+        if (transfersContainer == null) return;
+        transfersContainer.removeAllViews();
+
+        if (rows == null || rows.length() == 0) {
+            TextView empty = makeText("Nenhum arquivo disponível para esta multimídia.", 13, Color.rgb(151, 168, 184));
+            empty.setPadding(dp(7), dp(4), dp(7), dp(12));
+            transfersContainer.addView(empty, matchWrap());
+            return;
+        }
+
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject transfer = rows.optJSONObject(i);
+            if (transfer == null) continue;
+            transfersContainer.addView(makeTransferCard(transfer));
+        }
+    }
+
+    private View makeTransferCard(JSONObject transfer) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(13), dp(14), dp(13));
+        card.setBackgroundResource(R.drawable.update_tile);
+
+        String originalName = transfer.optString("original_filename", "arquivo");
+        String displayName = transfer.optString("display_name", "").trim();
+        String titleText = displayName.isEmpty() ? originalName : displayName;
+        String description = transfer.optString("description", "").trim();
+        long size = transfer.optLong("file_size", 0L);
+        String expiresAt = transfer.optString("expires_at", "");
+
+        TextView title = makeText(titleText, 16, Color.WHITE);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        card.addView(title, matchWrap());
+
+        if (!titleText.equals(originalName)) {
+            TextView original = makeText(originalName, 12, Color.rgb(151, 168, 184));
+            original.setPadding(0, dp(3), 0, 0);
+            card.addView(original, matchWrap());
+        }
+
+        if (!description.isEmpty()) {
+            TextView desc = makeText(description, 13, Color.rgb(210, 216, 224));
+            desc.setPadding(0, dp(8), 0, 0);
+            card.addView(desc, matchWrap());
+        }
+
+        String metaText = "Expira em " + formatTransferExpiry(expiresAt);
+        if (size > 0) metaText += "  ·  " + humanFileSize(size);
+        TextView meta = makeText(metaText, 12, Color.rgb(151, 168, 184));
+        meta.setPadding(0, dp(8), 0, dp(8));
+        card.addView(meta, matchWrap());
+
+        ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setVisibility(View.GONE);
+        card.addView(progress, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(8)
+        ));
+
+        TextView progressText = makeText("", 11, Color.rgb(183, 210, 201));
+        progressText.setPadding(0, dp(4), 0, 0);
+        progressText.setVisibility(View.GONE);
+        card.addView(progressText, matchWrap());
+
+        boolean installable = isInstallableTransfer(originalName);
+        TextView action = makeText(
+                installable ? "Baixar / Instalar" : "Baixar / Salvar no dispositivo",
+                14,
+                Color.WHITE
+        );
+        action.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        action.setGravity(Gravity.CENTER);
+        action.setPadding(dp(12), dp(13), dp(12), dp(13));
+        action.setBackgroundResource(R.drawable.tile);
+        action.setClickable(true);
+        LinearLayout.LayoutParams actionLp = matchWrap();
+        actionLp.setMargins(0, dp(10), 0, 0);
+        card.addView(action, actionLp);
+
+        action.setOnClickListener(v -> downloadTransfer(transfer, progress, progressText, action));
+
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        cardLp.setMargins(dp(5), 0, dp(5), dp(10));
+        card.setLayoutParams(cardLp);
+        return card;
+    }
+
+    private void downloadTransfer(
+            JSONObject transfer,
+            ProgressBar progress,
+            TextView progressText,
+            TextView action
+    ) {
+        String originalName = safeFilename(transfer.optString("original_filename", "arquivo"));
+        String transferId = transfer.optString("transfer_id", transfer.optString("id", ""));
+        String licenseCode = prefs().getString(PREF_LICENSE_CODE, "");
+
+        if (transferId.isEmpty() || licenseCode == null || licenseCode.trim().isEmpty()) {
+            showMessage("Transferência indisponível", "Não foi possível identificar esta transferência.");
+            return;
+        }
+
+        boolean installable = isInstallableTransfer(originalName);
+        if (!installable && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, STORAGE_PERMISSION_REQUEST);
+            Toast.makeText(this, "Permita salvar arquivos e toque novamente.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        action.setClickable(false);
+        action.setAlpha(0.6f);
+        progress.setVisibility(View.VISIBLE);
+        progressText.setVisibility(View.VISIBLE);
+        progress.setProgress(0);
+        progressText.setText("Iniciando download…");
+
+        new Thread(() -> {
+            HttpURLConnection c = null;
+            try {
+                File dir = getExternalFilesDir("Transferencias");
+                if (dir == null) throw new IOException("Pasta indisponível");
+                if (!dir.exists() && !dir.mkdirs()) throw new IOException("Pasta indisponível");
+
+                File target = new File(dir, originalName);
+                if (target.exists()) target.delete();
+
+                URL url = new URL(api.transferDownloadUrl());
+                c = (HttpURLConnection) url.openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(60000);
+                c.setRequestMethod("POST");
+                c.setDoOutput(true);
+                c.setRequestProperty("Content-Type", "application/json");
+                c.setRequestProperty("Accept", "application/octet-stream");
+
+                JSONObject body = new JSONObject();
+                body.put("licenseCode", licenseCode);
+                body.put("installationId", installationId);
+                body.put("publicKey", publicKey);
+                body.put("transferId", transferId);
+                byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+                c.setFixedLengthStreamingMode(bytes.length);
+                try (OutputStream out = c.getOutputStream()) {
+                    out.write(bytes);
+                }
+
+                int status = c.getResponseCode();
+                if (status < 200 || status >= 300) {
+                    String err = "HTTP " + status;
+                    try {
+                        InputStream es = c.getErrorStream();
+                        if (es != null) {
+                            byte[] buf = new byte[4096];
+                            int n = es.read(buf);
+                            if (n > 0) err = new String(buf, 0, n, StandardCharsets.UTF_8);
+                            es.close();
+                        }
+                    } catch (Exception ignored) {}
+                    throw new IOException(err);
+                }
+
+                long total = c.getContentLengthLong();
+                long done = 0L;
+                try (InputStream in = c.getInputStream();
+                     FileOutputStream out = new FileOutputStream(target)) {
+                    byte[] buffer = new byte[128 * 1024];
+                    int n;
+                    while ((n = in.read(buffer)) > 0) {
+                        out.write(buffer, 0, n);
+                        done += n;
+                        if (total > 0) {
+                            final int pct = (int) Math.min(100L, (done * 100L) / total);
+                            runOnUiThread(() -> {
+                                progress.setProgress(pct);
+                                progressText.setText("Baixando… " + pct + "%");
+                            });
+                        }
+                    }
+                }
+
+                runOnUiThread(() -> {
+                    progress.setProgress(100);
+                    progressText.setText("Download concluído · 100%");
+                });
+
+                if (installable) {
+                    File cached = copyForInstall(target);
+                    target.delete();
+                    runOnUiThread(() -> {
+                        if (originalName.toLowerCase(Locale.ROOT).endsWith(".apkm")) {
+                            launchApkmInstaller(cached);
+                        } else {
+                            launchInstaller(cached);
+                        }
+                    });
+                } else {
+                    saveToPublicDownloads(target, originalName);
+                    target.delete();
+                    runOnUiThread(() -> showMessage(
+                            "Arquivo salvo",
+                            originalName + " foi salvo na pasta Downloads do dispositivo."
+                    ));
+                }
+
+                recordUsage("transfer_download");
+            } catch (Exception e) {
+                runOnUiThread(() -> showMessage(
+                        "Falha na transferência",
+                        "Não foi possível baixar este arquivo. Verifique a conexão e tente novamente."
+                ));
+            } finally {
+                if (c != null) c.disconnect();
+                runOnUiThread(() -> {
+                    action.setClickable(true);
+                    action.setAlpha(1f);
+                });
+            }
+        }).start();
+    }
+
+    private boolean isInstallableTransfer(String name) {
+        String n = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        return n.endsWith(".apk") || n.endsWith(".apkm");
+    }
+
+    private String safeFilename(String name) {
+        String n = name == null ? "arquivo" : name.trim();
+        n = n.replace("/", "_").replace("\\", "_");
+        while (n.contains("..")) n = n.replace("..", "_");
+        if (n.isEmpty()) n = "arquivo";
+        return n;
+    }
+
+    private String formatTransferExpiry(String iso) {
+        try {
+            String clean = iso == null ? "" : iso.trim();
+            if (clean.length() >= 10) {
+                String[] p = clean.substring(0, 10).split("-");
+                if (p.length == 3) return p[2] + "/" + p[1] + "/" + p[0];
+            }
+        } catch (Exception ignored) {}
+        return "—";
+    }
+
+    private String humanFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        double kb = bytes / 1024.0;
+        if (kb < 1024) return String.format(Locale.getDefault(), "%.1f KB", kb);
+        double mb = kb / 1024.0;
+        if (mb < 1024) return String.format(Locale.getDefault(), "%.1f MB", mb);
+        return String.format(Locale.getDefault(), "%.2f GB", mb / 1024.0);
+    }
+
+    private void saveToPublicDownloads(File source, String filename) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentResolver resolver = getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, filename);
+            values.put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+            values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/GuiBYD");
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+            Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) throw new IOException("Não foi possível criar o arquivo");
+
+            try (FileInputStream in = new FileInputStream(source);
+                 OutputStream out = resolver.openOutputStream(uri)) {
+                if (out == null) throw new IOException("Não foi possível abrir o destino");
+                byte[] buffer = new byte[128 * 1024];
+                int n;
+                while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+            }
+
+            values.clear();
+            values.put(MediaStore.Downloads.IS_PENDING, 0);
+            resolver.update(uri, values, null, null);
+        } else {
+            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (!downloadsDir.exists() && !downloadsDir.mkdirs()) throw new IOException("Pasta Downloads indisponível");
+            File outFile = new File(downloadsDir, filename);
+            try (FileInputStream in = new FileInputStream(source);
+                 FileOutputStream out = new FileOutputStream(outFile)) {
+                byte[] buffer = new byte[128 * 1024];
+                int n;
+                while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+            }
+        }
+    }
+
+    private void launchApkmInstaller(File apkm) {
+        Uri uri = new Uri.Builder()
+                .scheme("content")
+                .authority(getPackageName() + ".files")
+                .appendPath(apkm.getName())
+                .build();
+
+        String[] mimeTypes = new String[]{
+                "application/octet-stream",
+                "application/zip",
+                "*/*"
+        };
+
+        for (String mime : mimeTypes) {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(uri, mime);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                try {
+                    startActivity(intent);
+                    return;
+                } catch (Exception ignored) {}
+            }
+        }
+
+        showMessage(
+                "Instalador de APKM necessário",
+                "O arquivo foi baixado, mas não encontrei um aplicativo compatível para instalar APKM. " +
+                        "Instale novamente o AppManager e tente de novo."
+        );
+    }
+
+    private void cleanupInstallerCache() {
+        try {
+            File dir = new File(getCacheDir(), "installer");
+            File[] files = dir.listFiles();
+            if (files == null) return;
+            long cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L;
+            for (File f : files) {
+                if (f.isFile() && f.lastModified() < cutoff) f.delete();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void revalidateCurrentLicense() {
+        if (revalidating) return;
+        String code = prefs().getString(PREF_LICENSE_CODE, null);
+        if (code == null || code.trim().isEmpty()) {
+            showActivationScreen(null);
+            return;
+        }
+
+        revalidating = true;
+        new Thread(() -> {
+            try {
+                JSONObject result = api.validateLicense(
+                        installationId,
+                        publicKey,
+                        BuildConfig.VERSION_CODE,
+                        BuildConfig.VERSION_NAME
+                );
+                if (validationAccepted(result)) {
+                    markValidatedNow();
+                    runOnUiThread(() -> {
+                        selfUpdatePromptShown = false;
+                        refreshOnlineInfo();
+                        loadBanner();
+                        loadTransfers();
+                    });
+                } else {
+                    String message = serverMessage(result, "Esta licença não está ativa nesta multimídia.");
+                    runOnUiThread(() -> showActivationScreen(message));
+                }
+            } catch (Exception e) {
+                if (isWithinOfflineGrace()) {
+                    runOnUiThread(() -> {
+                        refreshOnlineInfo();
+                        loadBanner();
+                        loadTransfers();
+                    });
+                } else {
+                    runOnUiThread(() -> showActivationScreen(
+                            "Não foi possível validar a licença. Verifique a conexão com a internet."
+                    ));
+                }
+            } finally {
+                revalidating = false;
+            }
         }).start();
     }
 

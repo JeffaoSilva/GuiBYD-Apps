@@ -46,6 +46,10 @@ public class ApkFileProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
+        String name = uri.getLastPathSegment();
+        if (name != null && name.toLowerCase().endsWith(".apkm")) {
+            return "application/octet-stream";
+        }
         return "application/vnd.android.package-archive";
     }
 

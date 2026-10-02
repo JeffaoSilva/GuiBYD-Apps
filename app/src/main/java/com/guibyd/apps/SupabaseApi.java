@@ -58,6 +58,27 @@ public final class SupabaseApi {
         return firstObject(rpc("validate_license", body));
     }
 
+    public JSONArray listTransfers(
+            String licenseCode,
+            String installationId,
+            String publicKey
+    ) throws Exception {
+        JSONObject body = new JSONObject();
+        body.put("p_license_code", licenseCode);
+        body.put("p_installation_id", installationId);
+        body.put("p_public_key", publicKey);
+        String raw = rpc("client_list_transfers", body);
+        if (raw == null || raw.trim().isEmpty()) return new JSONArray();
+        String t = raw.trim();
+        if (t.startsWith("[")) return new JSONArray(t);
+        if (t.startsWith("{")) return new JSONArray().put(new JSONObject(t));
+        return new JSONArray();
+    }
+
+    public String transferDownloadUrl() {
+        return RELEASES_API_BASE + "/transfer/download";
+    }
+
     public JSONObject getRelease(String appKey) throws Exception {
         JSONObject body = new JSONObject();
         body.put("p_app_key", appKey);
