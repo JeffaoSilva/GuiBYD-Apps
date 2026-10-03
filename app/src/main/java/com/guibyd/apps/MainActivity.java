@@ -73,18 +73,28 @@ public class MainActivity extends Activity {
 
     private static final int DOWNLOAD_YOUTUBE = 1;
     private static final int DOWNLOAD_GUIBYD = 2;
+    private static final int DOWNLOAD_GBOX = 3;
+    private static final int DOWNLOAD_YOUTUBE_MUSIC = 4;
 
     private SupabaseApi api;
     private String installationId;
     private String publicKey;
     private JSONObject youtubeRelease;
     private JSONObject appRelease;
+    private JSONObject gboxRelease;
+    private JSONObject youtubeMusicRelease;
     private TextView youtubeVersionView;
     private TextView appVersionView;
+    private TextView gboxVersionView;
+    private TextView youtubeMusicVersionView;
     private ProgressBar youtubeDownloadProgress;
     private ProgressBar appDownloadProgress;
+    private ProgressBar gboxDownloadProgress;
+    private ProgressBar youtubeMusicDownloadProgress;
     private TextView youtubeProgressText;
     private TextView appProgressText;
+    private TextView gboxProgressText;
+    private TextView youtubeMusicProgressText;
     private ImageView bannerView;
     private LinearLayout transfersContainer;
     private boolean selfUpdatePromptShown = false;
@@ -112,6 +122,24 @@ public class MainActivity extends Activity {
             new AppItem("Waze", "com.waze", R.drawable.icon_waze, AppType.AURORA, "aurora_waze"),
             new AppItem("WhatsApp", "com.whatsapp", R.drawable.icon_whatsapp, AppType.AURORA, "aurora_whatsapp"),
             new AppItem("WhatsApp Business", "com.whatsapp.w4b", R.drawable.icon_whatsapp_business, AppType.AURORA, "aurora_whatsapp_business")
+    };
+
+    private static final AppItem[] GAME_APPS = new AppItem[] {
+            new AppItem("Angry Birds 2", "com.rovio.baba", R.drawable.icon_angry_birds_2, AppType.AURORA, "game_angry_birds_2"),
+            new AppItem("Subway Surfers", "com.kiloo.subwaysurf", R.drawable.icon_subway_surfers, AppType.AURORA, "game_subway_surfers"),
+            new AppItem("Candy Crush Saga", "com.king.candycrushsaga", R.drawable.icon_candy_crush, AppType.AURORA, "game_candy_crush"),
+            new AppItem("Fruit Ninja", "com.halfbrick.fruitninjafree", R.drawable.icon_fruit_ninja, AppType.AURORA, "game_fruit_ninja"),
+            new AppItem("8 Ball Pool", "com.miniclip.eightballpool", R.drawable.icon_8_ball_pool, AppType.AURORA, "game_8_ball_pool"),
+            new AppItem("Block Blast!", "com.block.juggle", R.drawable.icon_block_blast, AppType.AURORA, "game_block_blast"),
+            new AppItem("Hill Climb Racing 2", "com.fingersoft.hcr2", R.drawable.icon_hill_climb_2, AppType.AURORA, "game_hill_climb_2"),
+            new AppItem("UNO!", "com.matteljv.uno", R.drawable.icon_uno, AppType.AURORA, "game_uno"),
+            new AppItem("Crossy Road", "com.yodo1.crossyroad", R.drawable.icon_crossy_road, AppType.AURORA, "game_crossy_road")
+    };
+
+    private static final AppItem[] ADDITIONAL_APPS = new AppItem[] {
+            new AppItem("ChatGPT", "com.openai.chatgpt", R.drawable.icon_chatgpt, AppType.AURORA, "additional_chatgpt"),
+            new AppItem("Claude", "com.anthropic.claude", R.drawable.icon_claude, AppType.AURORA, "additional_claude"),
+            new AppItem("NotebookLM", "com.google.android.apps.labs.language.tailwind", R.drawable.icon_notebooklm, AppType.AURORA, "additional_notebooklm")
     };
 
     private final BroadcastReceiver downloadReceiver = new BroadcastReceiver() {
@@ -385,34 +413,16 @@ public class MainActivity extends Activity {
         addSectionTitle(root, "Aplicativos do Aurora");
         addGrid(root, AURORA_APPS, portrait);
 
+        addSectionTitle(root, "Jogos");
+        addGrid(root, GAME_APPS, portrait);
+
+        addSectionTitle(root, "Adicionais");
+        addGrid(root, ADDITIONAL_APPS, portrait);
+
         addSectionTitle(root, "Atualizações");
 
-        LinearLayout updatesRow = new LinearLayout(this);
-        updatesRow.setOrientation(LinearLayout.HORIZONTAL);
-
-        LinearLayout.LayoutParams appLp = new LinearLayout.LayoutParams(
-                0,
-                dp(portrait ? 175 : 165),
-                1f
-        );
-        appLp.setMargins(dp(5), 0, dp(5), 0);
-        updatesRow.addView(makeOnlineUpdateCard(DOWNLOAD_GUIBYD, portrait), appLp);
-
-        LinearLayout.LayoutParams youtubeLp = new LinearLayout.LayoutParams(
-                0,
-                dp(portrait ? 175 : 165),
-                1f
-        );
-        youtubeLp.setMargins(dp(5), 0, dp(5), 0);
-        updatesRow.addView(makeOnlineUpdateCard(DOWNLOAD_YOUTUBE, portrait), youtubeLp);
-
-        root.addView(
-                updatesRow,
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-        );
+        addUpdatesRow(root, DOWNLOAD_GUIBYD, DOWNLOAD_GBOX, portrait);
+        addUpdatesRow(root, DOWNLOAD_YOUTUBE, DOWNLOAD_YOUTUBE_MUSIC, portrait);
 
         addSectionTitle(root, "Transferências");
 
@@ -442,6 +452,28 @@ public class MainActivity extends Activity {
                 ScrollView.LayoutParams.WRAP_CONTENT
         ));
         setContentView(scroll);
+    }
+
+    private void addUpdatesRow(LinearLayout root, int leftKind, int rightKind, boolean portrait) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        LinearLayout.LayoutParams leftLp = new LinearLayout.LayoutParams(
+                0, dp(portrait ? 175 : 165), 1f
+        );
+        leftLp.setMargins(dp(5), 0, dp(5), dp(10));
+        row.addView(makeOnlineUpdateCard(leftKind, portrait), leftLp);
+
+        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(
+                0, dp(portrait ? 175 : 165), 1f
+        );
+        rightLp.setMargins(dp(5), 0, dp(5), dp(10));
+        row.addView(makeOnlineUpdateCard(rightKind, portrait), rightLp);
+
+        root.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
     }
 
     private void addSectionTitle(LinearLayout root, String text) {
@@ -518,8 +550,6 @@ public class MainActivity extends Activity {
     }
 
     private View makeOnlineUpdateCard(int kind, boolean portrait) {
-        final boolean isYoutube = kind == DOWNLOAD_YOUTUBE;
-
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setGravity(Gravity.CENTER);
@@ -529,18 +559,14 @@ public class MainActivity extends Activity {
         card.setFocusable(true);
 
         ImageView icon = new ImageView(this);
-        icon.setImageResource(isYoutube ? R.drawable.icon_youtube : R.drawable.icon_update);
+        icon.setImageResource(updateIconForKind(kind));
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int iconSize = dp(portrait ? 40 : 44);
         LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(iconSize, iconSize);
         iconLp.setMargins(0, 0, 0, dp(6));
         card.addView(icon, iconLp);
 
-        TextView title = makeText(
-                isYoutube ? "Instalar / Atualizar YouTube" : "Atualizar Aplicativos Gui.BYD",
-                portrait ? 14 : 15,
-                Color.WHITE
-        );
+        TextView title = makeText(updateTitleForKind(kind), portrait ? 14 : 15, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
         title.setMaxLines(2);
@@ -555,11 +581,7 @@ public class MainActivity extends Activity {
         version.setPadding(0, dp(4), 0, dp(4));
         card.addView(version, matchWrap());
 
-        ProgressBar progress = new ProgressBar(
-                this,
-                null,
-                android.R.attr.progressBarStyleHorizontal
-        );
+        ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         progress.setProgress(0);
         progress.setVisibility(View.GONE);
@@ -570,37 +592,79 @@ public class MainActivity extends Activity {
         progressLp.setMargins(0, dp(4), 0, 0);
         card.addView(progress, progressLp);
 
-        TextView progressText = makeText(
-                "",
-                portrait ? 10 : 11,
-                Color.rgb(183, 210, 201)
-        );
+        TextView progressText = makeText("", portrait ? 10 : 11, Color.rgb(183, 210, 201));
         progressText.setGravity(Gravity.CENTER);
         progressText.setPadding(0, dp(3), 0, 0);
         progressText.setVisibility(View.GONE);
         card.addView(progressText, matchWrap());
 
-        if (isYoutube) {
-            youtubeVersionView = version;
-            youtubeDownloadProgress = progress;
-            youtubeProgressText = progressText;
-        } else {
-            appVersionView = version;
-            appDownloadProgress = progress;
-            appProgressText = progressText;
-        }
+        bindUpdateViews(kind, version, progress, progressText);
 
         card.setOnClickListener(v -> {
-            if (isYoutube) {
-                recordUsage("youtube_install_update");
-                startYoutubeUpdate();
-            } else {
-                recordUsage("guibyd_self_update");
+            recordUsage(updateEventForKind(kind));
+            if (kind == DOWNLOAD_GUIBYD) {
                 startSelfUpdate();
+            } else {
+                startManagedAppUpdate(kind);
             }
         });
 
         return card;
+    }
+
+    private void bindUpdateViews(int kind, TextView version, ProgressBar progress, TextView progressText) {
+        if (kind == DOWNLOAD_GUIBYD) {
+            appVersionView = version;
+            appDownloadProgress = progress;
+            appProgressText = progressText;
+        } else if (kind == DOWNLOAD_GBOX) {
+            gboxVersionView = version;
+            gboxDownloadProgress = progress;
+            gboxProgressText = progressText;
+        } else if (kind == DOWNLOAD_YOUTUBE) {
+            youtubeVersionView = version;
+            youtubeDownloadProgress = progress;
+            youtubeProgressText = progressText;
+        } else if (kind == DOWNLOAD_YOUTUBE_MUSIC) {
+            youtubeMusicVersionView = version;
+            youtubeMusicDownloadProgress = progress;
+            youtubeMusicProgressText = progressText;
+        }
+    }
+
+    private int updateIconForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return R.drawable.icon_gbox;
+        if (kind == DOWNLOAD_YOUTUBE) return R.drawable.icon_youtube;
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return R.drawable.icon_youtube_music;
+        return R.drawable.icon_update;
+    }
+
+    private String updateTitleForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return "Instalar / Atualizar GBox";
+        if (kind == DOWNLOAD_YOUTUBE) return "Instalar / Atualizar YouTube";
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return "Instalar / Atualizar YouTube Music";
+        return "Atualizar Aplicativos Gui.BYD";
+    }
+
+    private String updateAppKeyForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return "gbox";
+        if (kind == DOWNLOAD_YOUTUBE) return "youtube";
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return "youtube_music";
+        return "guibyd";
+    }
+
+    private String updateEventForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return "gbox_install_update";
+        if (kind == DOWNLOAD_YOUTUBE) return "youtube_install_update";
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return "youtube_music_install_update";
+        return "guibyd_self_update";
+    }
+
+    private String updateDisplayNameForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return "GBox";
+        if (kind == DOWNLOAD_YOUTUBE) return "YouTube";
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return "YouTube Music";
+        return "Aplicativos Gui.BYD";
     }
 
     private void refreshOnlineInfo() {
@@ -608,6 +672,8 @@ public class MainActivity extends Activity {
             try {
                 youtubeRelease = api.getRelease("youtube");
                 appRelease = api.getRelease("guibyd");
+                gboxRelease = api.getRelease("gbox");
+                youtubeMusicRelease = api.getRelease("youtube_music");
 
                 runOnUiThread(() -> {
                     updateReleaseLabels();
@@ -615,31 +681,27 @@ public class MainActivity extends Activity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    if (youtubeVersionView != null) youtubeVersionView.setText("Sem conexão para consultar a versão");
-                    if (appVersionView != null) appVersionView.setText("Sem conexão para consultar a versão");
+                    setReleaseLabelError(youtubeVersionView);
+                    setReleaseLabelError(appVersionView);
+                    setReleaseLabelError(gboxVersionView);
+                    setReleaseLabelError(youtubeMusicVersionView);
                 });
             }
         }).start();
     }
 
+    private void setReleaseLabelError(TextView view) {
+        if (view != null) view.setText("Sem conexão para consultar a versão");
+    }
+
     private void updateReleaseLabels() {
-        if (youtubeVersionView != null) {
-            if (youtubeRelease != null) {
-                String version = youtubeRelease.optString("version_name", "").trim();
-                youtubeVersionView.setText(
-                        version.isEmpty() || "não definido".equalsIgnoreCase(version)
-                                ? "Versão ainda não publicada"
-                                : "Versão disponível: " + version
-                );
-            } else {
-                youtubeVersionView.setText("Versão indisponível");
-            }
-        }
+        updateManagedReleaseLabel(youtubeVersionView, youtubeRelease);
+        updateManagedReleaseLabel(gboxVersionView, gboxRelease);
+        updateManagedReleaseLabel(youtubeMusicVersionView, youtubeMusicRelease);
 
         if (appVersionView != null) {
             if (appRelease != null) {
                 String version = appRelease.optString("version_name", "").trim();
-
                 if (version.isEmpty()) {
                     appVersionView.setText("Versão indisponível");
                 } else if (isVersionNewer(version, BuildConfig.VERSION_NAME)) {
@@ -651,6 +713,20 @@ public class MainActivity extends Activity {
                 appVersionView.setText("Versão indisponível");
             }
         }
+    }
+
+    private void updateManagedReleaseLabel(TextView view, JSONObject release) {
+        if (view == null) return;
+        if (release == null) {
+            view.setText("Versão indisponível");
+            return;
+        }
+        String version = release.optString("version_name", "").trim();
+        view.setText(
+                version.isEmpty() || "não definido".equalsIgnoreCase(version)
+                        ? "Versão ainda não publicada"
+                        : "Versão disponível: " + version
+        );
     }
 
     private void checkSelfUpdate(JSONObject release) {
@@ -670,31 +746,48 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    private void startYoutubeUpdate() {
-        if (youtubeRelease != null) {
-            startReleaseDownload(youtubeRelease, DOWNLOAD_YOUTUBE);
+    private void startManagedAppUpdate(int kind) {
+        JSONObject release = releaseForKind(kind);
+        if (release != null) {
+            startReleaseDownload(release, kind);
             return;
         }
 
-        Toast.makeText(this, "Consultando a versão do YouTube…", Toast.LENGTH_SHORT).show();
+        String displayName = updateDisplayNameForKind(kind);
+        Toast.makeText(this, "Consultando a versão do " + displayName + "…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
-                JSONObject r = api.getRelease("youtube");
-                youtubeRelease = r;
+                JSONObject r = api.getRelease(updateAppKeyForKind(kind));
+                setReleaseForKind(kind, r);
                 runOnUiThread(() -> {
+                    updateReleaseLabels();
                     if (r == null || r.optString("file_path", "").isEmpty()) {
-                        showMessage("YouTube", "Ainda não há uma versão publicada no servidor.");
+                        showMessage(displayName, "Ainda não há uma versão publicada no servidor.");
                     } else {
-                        startReleaseDownload(r, DOWNLOAD_YOUTUBE);
+                        startReleaseDownload(r, kind);
                     }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> showMessage(
                         "Falha na conexão",
-                        "Não foi possível consultar a versão do YouTube."
+                        "Não foi possível consultar a versão do " + displayName + "."
                 ));
             }
         }).start();
+    }
+
+    private JSONObject releaseForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return gboxRelease;
+        if (kind == DOWNLOAD_YOUTUBE) return youtubeRelease;
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return youtubeMusicRelease;
+        return appRelease;
+    }
+
+    private void setReleaseForKind(int kind, JSONObject release) {
+        if (kind == DOWNLOAD_GBOX) gboxRelease = release;
+        else if (kind == DOWNLOAD_YOUTUBE) youtubeRelease = release;
+        else if (kind == DOWNLOAD_YOUTUBE_MUSIC) youtubeMusicRelease = release;
+        else appRelease = release;
     }
 
     private void startSelfUpdate() {
@@ -848,13 +941,13 @@ public class MainActivity extends Activity {
                 return;
             }
 
-            String filename = kind == DOWNLOAD_YOUTUBE ? "Youtube_Morphe.apk" : "Aplicativos_GuiBYD.apk";
+            String filename = updateFilenameForKind(kind);
             File targetFile = new File(dir, filename);
             if (targetFile.exists()) targetFile.delete();
 
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(api.storageDownloadUrl(path)));
             api.addAuthHeaders(request::addRequestHeader);
-            request.setTitle(kind == DOWNLOAD_YOUTUBE ? "YouTube Gui.BYD" : "Aplicativos Gui.BYD");
+            request.setTitle(updateDisplayNameForKind(kind) + " Gui.BYD");
             request.setDescription("Baixando " + filename);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setAllowedOverMetered(true);
@@ -872,6 +965,13 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String updateFilenameForKind(int kind) {
+        if (kind == DOWNLOAD_GBOX) return "GBox.apk";
+        if (kind == DOWNLOAD_YOUTUBE) return "Youtube_Morphe.apk";
+        if (kind == DOWNLOAD_YOUTUBE_MUSIC) return "YouTube_Music.apk";
+        return "Aplicativos_GuiBYD.apk";
+    }
+
     private boolean isDownloadActive(int kind) {
         for (DownloadTarget target : downloads.values()) {
             if (target.kind == kind) return true;
@@ -880,12 +980,21 @@ public class MainActivity extends Activity {
     }
 
     private void showDownloadProgress(int kind, int percent, String text) {
-        ProgressBar bar = kind == DOWNLOAD_YOUTUBE
-                ? youtubeDownloadProgress
-                : appDownloadProgress;
-        TextView label = kind == DOWNLOAD_YOUTUBE
-                ? youtubeProgressText
-                : appProgressText;
+        ProgressBar bar;
+        TextView label;
+        if (kind == DOWNLOAD_GBOX) {
+            bar = gboxDownloadProgress;
+            label = gboxProgressText;
+        } else if (kind == DOWNLOAD_YOUTUBE) {
+            bar = youtubeDownloadProgress;
+            label = youtubeProgressText;
+        } else if (kind == DOWNLOAD_YOUTUBE_MUSIC) {
+            bar = youtubeMusicDownloadProgress;
+            label = youtubeMusicProgressText;
+        } else {
+            bar = appDownloadProgress;
+            label = appProgressText;
+        }
 
         if (bar != null) {
             bar.setVisibility(View.VISIBLE);
