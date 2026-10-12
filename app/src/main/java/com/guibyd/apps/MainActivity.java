@@ -106,7 +106,6 @@ public class MainActivity extends Activity {
 
     private static final AppItem[] USB_APPS = new AppItem[] {
             new AppItem("MicroG", "MicroG_RE", R.drawable.icon_microg, AppType.USB, "usb_microg"),
-            new AppItem("Electro", "Electro", R.drawable.icon_electro, AppType.USB, "usb_electro"),
             new AppItem("Radarbot", "Radarbot", R.drawable.icon_radarbot, AppType.USB, "usb_radarbot"),
             new AppItem("Spark", "Spark", R.drawable.icon_spark, AppType.USB, "usb_spark"),
             new AppItem("Aurora Store", "Aurora_Store", R.drawable.icon_aurora, AppType.USB, "usb_aurora_store")
